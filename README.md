@@ -90,7 +90,7 @@ pip install imgaug matplotlib tqdm prettytable [-i https://pypi.douban.com/simpe
     ./scripts/train_vaihingen.sh localhost
     ```
 
-* In addition, the pre-training code on **ImageNet** is provided, and the usage is similar to **train_vaihingen.sh**. The process of pre-training is accelerated by [DALI](https://github.com/NVIDIA/DALI) library. It's worth noting that you need to prepare your training and test data in advance in the following way.
+* In addition, the pre-training code on **ImageNet** is provided, and the usage is similar to **train_vaihingen.sh**. The pre-training process is accelerated by [DALI](https://github.com/NVIDIA/DALI) library. It's worth noting that you need to prepare your training and validation datasets in advance in the following way.
 
   ```
   .
