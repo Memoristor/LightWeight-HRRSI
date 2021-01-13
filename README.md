@@ -97,9 +97,9 @@ pip install imgaug matplotlib tqdm prettytable [-i https://pypi.douban.com/simpe
   |-- train
   |   |-- n01440764
   |   |-- ...
-  `-- val
-  	|-- n01440764
-  	|-- ...
+  |-- val
+  |   |-- n01440764
+  |   |-- ...
   ```
 
 
