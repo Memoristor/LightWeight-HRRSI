@@ -10,6 +10,7 @@ __all__ = [
     'BinaryCrossEntropy2D',
     'ImageBasedCrossEntropy2D',
     'BoundariesRelaxation2D',
+    'BinaryBoundariesRelaxation2D',
     'LabelSmoothCrossEntropy',
     'LabelSmoothCrossEntropy2D'
 ]
@@ -360,6 +361,87 @@ class BoundariesRelaxation2D(BasicLossModule):
         return loss
 
 
+class BinaryBoundariesRelaxation2D(BoundariesRelaxation2D):
+    """
+    The boundaries relaxation loss (version for binary cross-entropy loss)
+
+    Params:
+        ignore_index: int (default 255). Categories to be ignored of `target`
+        custom_weight: numpy array or list (default None). The weight of two category. For example,
+            [0.2, 0.8], if `custom_weight` is not None, `batch_weight` will be ignored
+        batch_weight: bool (default True). If true, the whole batch is used to calculate weights
+        size_average: bool (default True). Loss will be divided by (h * w)
+        batch_average: bool (default True). Loss will be divided by (n)
+        window_size: int, list or tuple (default 3). The slide window size of boundaries relaxation loss
+        stride: int, list or tuple (default 1). The strode of slide window
+
+    forward:
+        logit: 4-D torch.Tensor. The predict result without `sigmoid`, which shape is (n, 1, h, w)
+        target: 3-D torch.Tensor. The input binary target which shape is (n, h, w)
+
+        Note that there's no need to use `sigmoid` for `logit` before calling this loss module.
+    """
+
+    def forward(self, logit, target):
+
+        # Get the size of `logit`
+        n, c, h, w = logit.size()
+        assert c == 1
+
+        # Init weight
+        if self.custom_weight is not None:
+            weight = self.custom_weight.to(logit.device)
+        else:
+            if self.batch_weight:
+                weight = self.calculate_weights(target, c).to(logit.device)
+            else:
+                weight = None
+
+        # Get soft output of `logit`
+        logit_soft = torch.sigmoid(logit)
+
+        # Get positive/negative/ignore index
+        pos_index = (target == 1)
+        neg_index = (target == 0)
+        # ign_index = (target == self.ignore_index)
+        ign_index = (target > 1)
+
+        # Reset the values of `ignore index` to 0
+        target[ign_index] = 0
+
+        # Get the boundaries relaxation result of `logit` and `target`
+        logit_br = self.pool2d(logit_soft)  # n,1,h,w
+        target_br = self.pool2d(target.float().unsqueeze(1))  # n,1,h,w
+
+        # Get binary boundary relaxation loss
+        loss = - (target_br * torch.log(logit_br + 1e-14) + (1 - target_br) * torch.log(1 - logit_br + 1e-14))
+        loss = loss.squeeze(1)  # n,h,w
+
+        # Get new loss if `weight` is not None
+        if weight is not None:
+            weight_matrix = torch.zeros(target.size(), dtype=torch.float32)
+            weight_matrix[neg_index] = weight[0]  # weight for positive index
+            weight_matrix[pos_index] = weight[1]  # weight for negative index
+            weight_matrix = weight_matrix.unsqueeze(1)  # n,1,h,w
+            weight_matrix = self.pool2d(weight_matrix)
+            weight_matrix = weight_matrix.squeeze(1)  # n,h,w
+
+            loss = weight_matrix * loss
+
+        # Get sum of loss
+        loss = loss.sum()
+
+        # loss will be divided by (h * w)
+        if self.size_average:
+            loss /= (h * w)
+
+        # loss will be divided by (n)
+        if self.batch_average:
+            loss /= n
+
+        return loss
+
+
 class LabelSmoothCrossEntropy(BasicLossModule):
     """
     Labels Smooth Loss for classification
@@ -512,55 +594,62 @@ if __name__ == '__main__':
     batch_size = 5
 
     # torch.manual_seed(1)
-    torch.clear_autocast_cache()
+    # torch.clear_autocast_cache()
 
     print('=' * 30 + ' CrossEntropy2D ' + '=' * 30)
-    z = torch.randn(batch_size, num_class, *size, requires_grad=True).cuda()
-    y = torch.randint(num_class, (batch_size, *size), dtype=torch.float).cuda()
+    z = torch.randn(batch_size, num_class, *size, requires_grad=True)
+    y = torch.randint(num_class, (batch_size, *size), dtype=torch.float)
     print('z.shape: {}, y.shape: {}'.format(z.shape, y.shape))
     l = CrossEntropy2D()(z, y)
     print(l.detach().cpu().numpy())
 
     print('=' * 30 + ' BinaryCrossEntropy2D ' + '=' * 30)
-    z = torch.randn(batch_size, *size, requires_grad=True).cuda()
-    y = torch.randint(2, (batch_size, *size), dtype=torch.float).cuda()
+    z = torch.randn(batch_size, *size, requires_grad=True)
+    y = torch.randint(2, (batch_size, *size), dtype=torch.float)
     print('z.shape: {}, y.shape: {}'.format(z.shape, y.shape))
     l = BinaryCrossEntropy2D()(z, y)
     print(l.detach().cpu().numpy())
 
     print()
 
-    z = torch.randn(batch_size, num_class, *size, requires_grad=True).cuda()
-    y = torch.randint(2, (batch_size, num_class, *size), dtype=torch.float).cuda()
+    z = torch.randn(batch_size, num_class, *size, requires_grad=True)
+    y = torch.randint(2, (batch_size, num_class, *size), dtype=torch.float)
     print('z.shape: {}, y.shape: {}'.format(z.shape, y.shape))
     l = BinaryCrossEntropy2D()(z, y)
     print(l.detach().cpu().numpy())
 
     print('=' * 30 + ' ImageBasedCrossEntropy2D ' + '=' * 30)
-    z = torch.randn(batch_size, num_class, *size, requires_grad=True).cuda()
-    y = torch.randint(num_class, (batch_size, *size), dtype=torch.float).cuda()
+    z = torch.randn(batch_size, num_class, *size, requires_grad=True)
+    y = torch.randint(num_class, (batch_size, *size), dtype=torch.float)
     print('z.shape: {}, y.shape: {}'.format(z.shape, y.shape))
     l = ImageBasedCrossEntropy2D(num_class, batch_weight=True)(z, y)
     print(l.detach().cpu().numpy())
 
     print('=' * 30 + ' BoundariesRelaxation2D ' + '=' * 30)
-    z = torch.randn(batch_size, num_class, *size, requires_grad=True).cuda()
-    y = torch.randint(num_class, (batch_size, *size), dtype=torch.float).cuda()
+    z = torch.randn(batch_size, num_class, *size, requires_grad=True)
+    y = torch.randint(num_class, (batch_size, *size), dtype=torch.float)
     print('z.shape: {}, y.shape: {}'.format(z.shape, y.shape))
     l = BoundariesRelaxation2D(window_size=10, custom_weight=np.arange(num_class) + 1)(z, y)
     print(l.detach().cpu().numpy())
 
-    print('=' * 30 + ' BoundariesRelaxation2D ' + '=' * 30)
-    z = torch.randn(batch_size, num_class, requires_grad=True).cuda()
-    y = torch.randint(num_class, (batch_size,), dtype=torch.float).cuda()
+    print('=' * 30 + ' BinaryBoundariesRelaxation2D ' + '=' * 30)
+    z = torch.randn(batch_size, 1, *size, requires_grad=True)
+    y = torch.randint(2, (batch_size, *size), dtype=torch.float)
+    print('z.shape: {}, y.shape: {}'.format(z.shape, y.shape))
+    l = BinaryBoundariesRelaxation2D(window_size=10, custom_weight=[1.2, 1.8])(z, y)
+    print(l.detach().cpu().numpy())
+
+    print('=' * 30 + ' LabelSmoothCrossEntropy ' + '=' * 30)
+    z = torch.randn(batch_size, num_class, requires_grad=True)
+    y = torch.randint(num_class, (batch_size,), dtype=torch.float)
     y[0] = 255
     print('z.shape: {}, y.shape: {}'.format(z.shape, y.shape))
     l = LabelSmoothCrossEntropy(epsilon=0)(z, y)
     print(l.detach().cpu().numpy())
 
     print('=' * 30 + ' LabelSmoothCrossEntropy2D ' + '=' * 30)
-    z = torch.randn(batch_size, num_class, *size, requires_grad=True).cuda()
-    y = torch.randint(num_class, (batch_size, *size), dtype=torch.float).cuda()
+    z = torch.randn(batch_size, num_class, *size, requires_grad=True)
+    y = torch.randint(num_class, (batch_size, *size), dtype=torch.float)
     print('z.shape: {}, y.shape: {}'.format(z.shape, y.shape))
     l = LabelSmoothCrossEntropy2D(epsilon=0)(z, y)
     print(l.detach().cpu().numpy())
