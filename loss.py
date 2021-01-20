@@ -393,7 +393,7 @@ class BinaryBoundariesRelaxation2D(BoundariesRelaxation2D):
             weight = self.custom_weight.to(logit.device)
         else:
             if self.batch_weight:
-                weight = self.calculate_weights(target, c).to(logit.device)
+                weight = self.calculate_weights(target, c + 1).to(logit.device)
             else:
                 weight = None
 
@@ -636,7 +636,8 @@ if __name__ == '__main__':
     z = torch.randn(batch_size, 1, *size, requires_grad=True)
     y = torch.randint(2, (batch_size, *size), dtype=torch.float)
     print('z.shape: {}, y.shape: {}'.format(z.shape, y.shape))
-    l = BinaryBoundariesRelaxation2D(window_size=10, custom_weight=[1.2, 1.8])(z, y)
+    # l = BinaryBoundariesRelaxation2D(window_size=10, custom_weight=[1.2, 1.8])(z, y)
+    l = BinaryBoundariesRelaxation2D(window_size=10)(z, y)
     print(l.detach().cpu().numpy())
 
     print('=' * 30 + ' LabelSmoothCrossEntropy ' + '=' * 30)
